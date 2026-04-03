@@ -8,7 +8,10 @@ import garth
 from garth.exc import GarthHTTPError
 
 from src.config import settings
-from src.models.health import SleepData, BodyBatteryData, BodyBatteryEntry, DailyStats
+from src.models.health import (
+    SleepData, BodyBatteryData, BodyBatteryEntry, DailyStats,
+    StressData, HeartRateData, SpO2RespirationData, HydrationData,
+)
 from src.models.training import ActivityData, HRZone, LapData, ActivitySummary, ActivityList
 
 logger = logging.getLogger(__name__)
@@ -165,6 +168,109 @@ class GarminClient:
             rest_stress_duration=data.get("restStressDuration"),
             resting_heart_rate=data.get("restingHeartRate"),
             max_heart_rate=data.get("maxHeartRate"),
+        )
+
+    @with_retry
+    async def get_stress_data(self, target_date: Optional[str] = None) -> StressData:
+        """Fetch hourly stress data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/wellness-service/wellness/dailyStress/{target_date}",
+        )
+
+        hourly = [
+            {"time": entry[0], "stress_level": entry[1]}
+            for entry in (data.get("stressValuesArray") or [])
+            if entry[1] is not None and entry[1] >= 0
+        ]
+
+        return StressData(
+            date=target_date,
+            avg_stress=data.get("overallStressLevel"),
+            max_stress=data.get("maxStressLevel"),
+            rest_stress=data.get("restStressDuration"),
+            activity_stress=data.get("activityStressDuration"),
+            hourly_values=hourly or None,
+        )
+
+    @with_retry
+    async def get_heart_rate_data(self, target_date: Optional[str] = None) -> HeartRateData:
+        """Fetch detailed heart rate data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/wellness-service/wellness/dailyHeartRate/{self._display_name}",
+            params={"date": target_date},
+        )
+
+        hourly = [
+            {"time": entry[0], "hr": entry[1]}
+            for entry in (data.get("heartRateValues") or [])
+            if entry[1] is not None
+        ]
+
+        return HeartRateData(
+            date=target_date,
+            resting_hr=data.get("restingHeartRate"),
+            max_hr=data.get("maxHeartRate"),
+            min_hr=data.get("minHeartRate"),
+            hourly_values=hourly or None,
+        )
+
+    @with_retry
+    async def get_spo2_respiration(self, target_date: Optional[str] = None) -> SpO2RespirationData:
+        """Fetch SpO2 and respiration data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = (date.today() - timedelta(days=1)).isoformat()
+
+        spo2_data, resp_data = await asyncio.gather(
+            asyncio.to_thread(
+                garth.connectapi,
+                f"/wellness-service/wellness/daily/spo2/{target_date}",
+            ),
+            asyncio.to_thread(
+                garth.connectapi,
+                f"/wellness-service/wellness/daily/respiration/{target_date}",
+            ),
+        )
+
+        return SpO2RespirationData(
+            date=target_date,
+            avg_spo2=spo2_data.get("averageSpO2") if spo2_data else None,
+            min_spo2=spo2_data.get("lowestSpO2") if spo2_data else None,
+            avg_respiration=resp_data.get("avgWakingRespirationValue") if resp_data else None,
+            max_respiration=resp_data.get("highestRespirationValue") if resp_data else None,
+        )
+
+    @with_retry
+    async def get_hydration_data(self, target_date: Optional[str] = None) -> HydrationData:
+        """Fetch hydration goal and intake for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/usersummary-service/usersummary/hydration/allData/{target_date}",
+        )
+
+        intake = data.get("valueInML")
+        goal = data.get("goalInML")
+        pct = round(intake / goal * 100, 1) if intake and goal and goal > 0 else None
+
+        return HydrationData(
+            date=target_date,
+            goal_ml=goal,
+            intake_ml=intake,
+            percent_complete=pct,
         )
 
     @with_retry

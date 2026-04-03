@@ -13,6 +13,10 @@ DATA_TYPES = {
     "daily_stats": settings.cache_ttl_daily,
     "body_battery": settings.cache_ttl_daily,
     "activity": settings.cache_ttl_daily,
+    "stress": settings.cache_ttl_daily,
+    "heart_rate": settings.cache_ttl_daily,
+    "spo2_respiration": settings.cache_ttl_historical,
+    "hydration": settings.cache_ttl_daily,
 }
 
 

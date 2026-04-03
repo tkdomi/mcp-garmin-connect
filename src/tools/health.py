@@ -68,6 +68,70 @@ TOOL_DEFINITIONS = [
             },
         },
     ),
+    Tool(
+        name="get_stress_data",
+        description=(
+            "Returns hourly stress levels throughout the day: average, max, rest vs activity stress. "
+            "Use when the user asks about stress, anxiety level, or relaxation."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today.",
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_heart_rate",
+        description=(
+            "Returns detailed heart rate data for a day: resting HR, max HR, min HR, and hourly breakdown. "
+            "Use when the user asks about heart rate trends, resting HR, or cardiovascular data."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today.",
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_spo2_respiration",
+        description=(
+            "Returns blood oxygen saturation (SpO2) and respiration rate. "
+            "Use when the user asks about oxygen levels, breathing, or sleep quality vitals."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to last night.",
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_hydration",
+        description=(
+            "Returns daily hydration goal, intake in ml, and completion percentage. "
+            "Use when the user asks about water intake or hydration."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today.",
+                }
+            },
+        },
+    ),
 ]
 
 
@@ -80,6 +144,14 @@ async def handle(name: str, arguments: dict) -> Optional[dict]:
         return await _get_daily_stats(arguments.get("date"))
     if name == "get_health_summary":
         return await _get_health_summary(arguments.get("days", 7))
+    if name == "get_stress_data":
+        return await _get_stress_data(arguments.get("date"))
+    if name == "get_heart_rate":
+        return await _get_heart_rate(arguments.get("date"))
+    if name == "get_spo2_respiration":
+        return await _get_spo2_respiration(arguments.get("date"))
+    if name == "get_hydration":
+        return await _get_hydration(arguments.get("date"))
     return None
 
 
@@ -163,3 +235,79 @@ async def _get_health_summary(days: int = 7):
         total_activities=total_activities,
     )
     return summary.model_dump()
+
+
+async def _get_stress_data(target_date: Optional[str] = None):
+    if not target_date:
+        target_date = date.today().isoformat()
+    cached = cache.get("stress", target_date)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_stress_data(target_date)
+        cache.set("stress", target_date, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for stress data, trying stale cache: {e}")
+        stale = cache.get_stale("stress", target_date)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_heart_rate(target_date: Optional[str] = None):
+    if not target_date:
+        target_date = date.today().isoformat()
+    cached = cache.get("heart_rate", target_date)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_heart_rate_data(target_date)
+        cache.set("heart_rate", target_date, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for heart rate data, trying stale cache: {e}")
+        stale = cache.get_stale("heart_rate", target_date)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_spo2_respiration(target_date: Optional[str] = None):
+    if not target_date:
+        target_date = (date.today() - timedelta(days=1)).isoformat()
+    cached = cache.get("spo2_respiration", target_date)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_spo2_respiration(target_date)
+        cache.set("spo2_respiration", target_date, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for SpO2/respiration, trying stale cache: {e}")
+        stale = cache.get_stale("spo2_respiration", target_date)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_hydration(target_date: Optional[str] = None):
+    if not target_date:
+        target_date = date.today().isoformat()
+    cached = cache.get("hydration", target_date)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_hydration_data(target_date)
+        cache.set("hydration", target_date, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for hydration, trying stale cache: {e}")
+        stale = cache.get_stale("hydration", target_date)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
