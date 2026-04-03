@@ -1,29 +1,28 @@
 # mcp-garmin-connect
 
-MCP server dla Garmin Connect — część ekosystemu Mia.
-
-Wystawia narzędzia MCP umożliwiające Health Agentowi naturalną rozmowę o danych zdrowotnych użytkownika: sen, HRV, Body Battery, kroki, stres, aktywności fizyczne.
+MCP server for Garmin Connect. Exposes health and activity data as MCP tools, enabling AI assistants to have natural conversations about your health metrics: sleep, HRV, Body Battery, steps, stress, and detailed workout data.
 
 ## Stack
 
 - **Python 3.11+**
-- **mcp** — oficjalne SDK Anthropic (Model Context Protocol)
-- **garth** — komunikacja z Garmin Connect API
-- **Supabase** — cache danych zdrowotnych
-- **APScheduler** — codzienny sync o 7:00
-- **httpx** — wysyłka webhooków do n8n
+- **mcp** — Anthropic Model Context Protocol SDK
+- **garth** — Garmin Connect API client
+- **Supabase** — health data cache (optional)
+- **APScheduler** — daily sync at configurable time
+- **httpx** — n8n webhook delivery (optional)
 
-## Narzędzia MCP
+## MCP Tools
 
-| Tool | Opis |
-|------|------|
-| `get_sleep_data` | Sen, HRV, fazy snu dla podanej daty |
-| `get_body_battery` | Aktualny poziom Body Battery i trend |
-| `get_daily_stats` | Kroki, kalorie, minuty aktywności, stres |
-| `get_last_activity` | Ostatnia aktywność fizyczna |
-| `get_health_summary` | Tygodniowy/miesięczny przegląd zdrowia |
+| Tool | Description |
+|------|-------------|
+| `get_sleep_data` | Sleep quality, duration, phases (deep/light/REM), HRV, resting HR for a given date |
+| `get_body_battery` | Current Body Battery level (0–100) and today's charge/drain trend |
+| `get_daily_stats` | Steps, calories, active minutes, stress level for a given date |
+| `get_activities` | List of activities filtered by sport type and/or time period (today, this_week, this_month…) |
+| `get_activity` | Full activity details: per-km splits, cadence, power, stride metrics, training effect |
+| `get_health_summary` | Multi-day health overview: avg sleep score, HRV, steps, stress, activity count |
 
-## Instalacja
+## Installation
 
 ```bash
 git clone https://github.com/tkdomi/mcp-garmin-connect.git
@@ -35,23 +34,29 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# uzupełnij .env swoimi danymi
+# fill in your credentials
 ```
 
-## Uruchomienie
+## Running
 
 ```bash
 python main.py
 ```
 
-Serwer startuje na `http://0.0.0.0:8080` (domyślnie).
+Server starts on `http://0.0.0.0:8080` by default.
 
-Dostępne endpointy:
-- `GET /health` — status serwisu
-- `POST /sync` — ręczny trigger synchronizacji
+Endpoints:
+- `GET /health` — service status
+- `POST /sync` — manual sync trigger
 - `GET /sse` — MCP SSE transport
 
-## Supabase — schemat bazy
+## Environment Variables
+
+See `.env.example`. Required: `GARMIN_EMAIL`, `GARMIN_PASSWORD`.
+
+Supabase (`SUPABASE_URL`, `SUPABASE_KEY`) and n8n (`N8N_WEBHOOK_URL`, `N8N_BEARER_TOKEN`) are optional.
+
+## Supabase Schema
 
 ```sql
 CREATE TABLE health_data (
@@ -67,16 +72,12 @@ CREATE TABLE health_data (
 CREATE INDEX idx_health_date ON health_data(data_type, recorded_date DESC);
 ```
 
-## Zmienne środowiskowe
-
-Patrz `.env.example`.
-
-## Architektura
+## Architecture
 
 ```
-Health Agent (Voice/Chat)
-      ↓
-garmin-mcp (ten serwer, SSE transport)
-      ↓
+AI Assistant (Voice/Chat)
+        ↓
+garmin-mcp  (this server, SSE transport)
+        ↓
 Garmin Connect API  +  Supabase cache  +  n8n webhooks
 ```
