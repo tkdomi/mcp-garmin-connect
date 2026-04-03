@@ -46,7 +46,7 @@ async def sync_health_data():
         logger.error(f"Body Battery sync failed: {e}")
 
     try:
-        activity = await garmin.get_last_activity()
+        activity = await garmin.get_activity()
         if activity.activity_id:
             cache.set("activity", activity.start_time[:10] if activity.start_time else today, activity.model_dump())
             logger.info(f"Activity synced: {activity.activity_type} / {activity.activity_name}")

@@ -18,7 +18,11 @@ DATA_TYPES = {
 
 class CacheService:
     def __init__(self):
-        self.client: Client = create_client(settings.supabase_url, settings.supabase_key)
+        if settings.supabase_url and settings.supabase_key:
+            self.client: Optional[Client] = create_client(settings.supabase_url, settings.supabase_key)
+        else:
+            logger.info("Supabase not configured — caching disabled.")
+            self.client = None
 
     def _is_expired(self, synced_at: str, ttl_hours: int) -> bool:
         synced = datetime.fromisoformat(synced_at.replace("Z", "+00:00"))
@@ -26,6 +30,8 @@ class CacheService:
 
     def get(self, data_type: str, recorded_date: str) -> Optional[dict]:
         """Return cached data if exists and not expired, else None."""
+        if not self.client:
+            return None
         try:
             result = (
                 self.client.table("health_data")
@@ -53,6 +59,8 @@ class CacheService:
 
     def set(self, data_type: str, recorded_date: str, data: dict) -> bool:
         """Upsert data into cache."""
+        if not self.client:
+            return False
         try:
             self.client.table("health_data").upsert({
                 "data_type": data_type,
@@ -68,6 +76,8 @@ class CacheService:
 
     def get_stale(self, data_type: str, recorded_date: str) -> Optional[dict]:
         """Return cached data regardless of TTL (fallback on API failure)."""
+        if not self.client:
+            return None
         try:
             result = (
                 self.client.table("health_data")
@@ -84,6 +94,8 @@ class CacheService:
 
     def get_range(self, data_type: str, from_date: str, to_date: str) -> list[dict]:
         """Return all cached records for a data type within a date range."""
+        if not self.client:
+            return []
         try:
             result = (
                 self.client.table("health_data")

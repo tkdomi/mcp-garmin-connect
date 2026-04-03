@@ -23,6 +23,41 @@ class BodyBatteryEntry(BaseModel):
     level: int
 
 
+class HRZone(BaseModel):
+    zone_number: int
+    time_in_zone_seconds: Optional[int] = None
+
+
+class LapData(BaseModel):
+    lap_index: int
+    distance_meters: Optional[float] = None
+    duration_seconds: Optional[float] = None
+    avg_pace_per_km_seconds: Optional[int] = None
+    avg_heart_rate: Optional[int] = None
+    avg_cadence: Optional[int] = None
+
+
+class ActivitySummary(BaseModel):
+    activity_id: Optional[int] = None
+    activity_name: Optional[str] = None
+    activity_type: Optional[str] = None
+    start_time: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    distance_meters: Optional[float] = None
+    avg_heart_rate: Optional[int] = None
+    max_heart_rate: Optional[int] = None
+    calories: Optional[float] = None
+    avg_speed: Optional[float] = None
+    elevation_gain: Optional[float] = None
+    stale: bool = False
+
+
+class ActivityList(BaseModel):
+    activities: List[ActivitySummary] = Field(default_factory=list)
+    count: int = 0
+    stale: bool = False
+
+
 class BodyBatteryData(BaseModel):
     current_level: Optional[int] = None
     charged: Optional[int] = None
@@ -62,6 +97,18 @@ class ActivityData(BaseModel):
     calories: Optional[float] = None
     avg_speed: Optional[float] = None
     elevation_gain: Optional[float] = None
+    avg_cadence: Optional[float] = None
+    max_cadence: Optional[float] = None
+    avg_power: Optional[int] = None
+    normalized_power: Optional[int] = None
+    training_effect: Optional[float] = None
+    anaerobic_training_effect: Optional[float] = None
+    stride_length_cm: Optional[float] = None
+    vertical_oscillation_cm: Optional[float] = None
+    ground_contact_time_ms: Optional[float] = None
+    steps: Optional[int] = None
+    hr_zones: Optional[List[HRZone]] = None
+    laps: Optional[List[LapData]] = None
     stale: bool = False
 
 

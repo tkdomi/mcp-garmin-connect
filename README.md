@@ -74,11 +74,7 @@ Patrz `.env.example`.
 ## Architektura
 
 ```
-Mia Voice/Chat
-      ↓
-NestJS Orchestrator
-      ↓
-Health Agent
+Health Agent (Voice/Chat)
       ↓
 garmin-mcp (ten serwer, SSE transport)
       ↓
