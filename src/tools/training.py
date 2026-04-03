@@ -49,6 +49,64 @@ TOOL_DEFINITIONS = [
             },
         },
     ),
+    Tool(
+        name="get_training_status",
+        description=(
+            "Returns training status (e.g. Productive, Maintaining, Detraining), "
+            "training readiness score (0-100), and acute/chronic load ratio. "
+            "Use when the user asks whether to train today, or about training readiness."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today.",
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_vo2max",
+        description=(
+            "Returns VO2 max value and fitness age equivalent. "
+            "Use when the user asks about aerobic fitness, VO2 max, or fitness age."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "sport": {
+                    "type": "string",
+                    "description": "Sport for VO2 max: running or cycling. Defaults to running.",
+                    "enum": ["running", "cycling"],
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_training_load",
+        description=(
+            "Returns weekly training load broken down by intensity: aerobic low, aerobic high, anaerobic. "
+            "Use when the user asks about training volume, load, or intensity distribution."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "week_start": {
+                    "type": "string",
+                    "description": "Monday of the week in YYYY-MM-DD format. Defaults to current week.",
+                }
+            },
+        },
+    ),
+    Tool(
+        name="get_race_predictions",
+        description=(
+            "Returns predicted race finish times for 5K, 10K, half marathon, and marathon. "
+            "Use when the user asks about race predictions, goal paces, or running performance."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
 ]
 
 
@@ -57,6 +115,14 @@ async def handle(name: str, arguments: dict) -> Optional[dict]:
         return await _get_activities(arguments.get("type"), arguments.get("period"))
     if name == "get_activity":
         return await _get_activity(arguments.get("activity_id"))
+    if name == "get_training_status":
+        return await _get_training_status(arguments.get("date"))
+    if name == "get_vo2max":
+        return await _get_vo2max(arguments.get("sport", "running"))
+    if name == "get_training_load":
+        return await _get_training_load(arguments.get("week_start"))
+    if name == "get_race_predictions":
+        return await _get_race_predictions()
     return None
 
 
@@ -111,4 +177,80 @@ async def _get_activity(activity_id: Optional[int] = None):
             if stale:
                 stale["stale"] = True
                 return stale
+        raise
+
+
+async def _get_training_status(target_date: Optional[str] = None):
+    if not target_date:
+        target_date = date.today().isoformat()
+    cached = cache.get("training_status", target_date)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_training_status(target_date)
+        cache.set("training_status", target_date, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for training status, trying stale cache: {e}")
+        stale = cache.get_stale("training_status", target_date)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_vo2max(sport: str = "running"):
+    today = date.today().isoformat()
+    cache_key = f"vo2max_{sport}"
+    cached = cache.get(cache_key, today)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_vo2max(sport)
+        cache.set(cache_key, today, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for VO2 max, trying stale cache: {e}")
+        stale = cache.get_stale(cache_key, today)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_training_load(week_start: Optional[str] = None):
+    if not week_start:
+        today = date.today()
+        week_start = (today - timedelta(days=today.weekday())).isoformat()
+    cached = cache.get("training_load", week_start)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_training_load(week_start)
+        cache.set("training_load", week_start, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for training load, trying stale cache: {e}")
+        stale = cache.get_stale("training_load", week_start)
+        if stale:
+            stale["stale"] = True
+            return stale
+        raise
+
+
+async def _get_race_predictions():
+    today = date.today().isoformat()
+    cached = cache.get("race_predictions", today)
+    if cached:
+        return cached
+    try:
+        data = await garmin.get_race_predictions()
+        cache.set("race_predictions", today, data.model_dump())
+        return data.model_dump()
+    except Exception as e:
+        logger.warning(f"Garmin API failed for race predictions, trying stale cache: {e}")
+        stale = cache.get_stale("race_predictions", today)
+        if stale:
+            stale["stale"] = True
+            return stale
         raise

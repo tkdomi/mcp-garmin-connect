@@ -17,6 +17,11 @@ DATA_TYPES = {
     "heart_rate": settings.cache_ttl_daily,
     "spo2_respiration": settings.cache_ttl_historical,
     "hydration": settings.cache_ttl_daily,
+    "training_status": settings.cache_ttl_daily,
+    "vo2max_running": settings.cache_ttl_daily,
+    "vo2max_cycling": settings.cache_ttl_daily,
+    "training_load": settings.cache_ttl_daily,
+    "race_predictions": settings.cache_ttl_daily,
 }
 
 

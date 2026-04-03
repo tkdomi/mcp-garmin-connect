@@ -12,7 +12,10 @@ from src.models.health import (
     SleepData, BodyBatteryData, BodyBatteryEntry, DailyStats,
     StressData, HeartRateData, SpO2RespirationData, HydrationData,
 )
-from src.models.training import ActivityData, HRZone, LapData, ActivitySummary, ActivityList
+from src.models.training import (
+    ActivityData, HRZone, LapData, ActivitySummary, ActivityList,
+    TrainingStatus, VO2MaxData, VO2MaxHistory, TrainingLoad, RacePredictions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -399,3 +402,96 @@ class GarminClient:
             logger.warning(f"Could not fetch laps for {activity_id}: {e}")
 
         return base
+
+    @with_retry
+    async def get_training_status(self, target_date: Optional[str] = None) -> TrainingStatus:
+        """Fetch training status and readiness for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/trainingStatus/daily/{target_date}",
+            params={"displayName": self._display_name},
+        )
+
+        dto = data.get("trainingStatusDTO", {}) if data else {}
+        readiness = dto.get("trainingReadinessDTO", {}) or {}
+        acute = dto.get("acuteLoad")
+        chronic = dto.get("chronicLoad")
+        ratio = round(acute / chronic, 2) if acute and chronic and chronic > 0 else None
+
+        return TrainingStatus(
+            date=target_date,
+            training_status=dto.get("latestTrainingStatusPhrase"),
+            training_readiness_score=readiness.get("score"),
+            acute_load=acute,
+            chronic_load=chronic,
+            load_ratio=ratio,
+        )
+
+    @with_retry
+    async def get_vo2max(self, sport: str = "running") -> VO2MaxData:
+        """Fetch VO2 max value for a given sport."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/maxMet/latest/{self._display_name}",
+        )
+
+        generic = data.get("generic", {}) if data else {}
+        sport_data = data.get(sport, {}) if data else {}
+        value = (sport_data or {}).get("vo2MaxValue") or generic.get("vo2MaxValue")
+
+        return VO2MaxData(
+            sport=sport,
+            value=value,
+            fitness_age_equivalent=generic.get("fitnessAge"),
+        )
+
+    @with_retry
+    async def get_training_load(self, week_start: Optional[str] = None) -> TrainingLoad:
+        """Fetch weekly training load breakdown."""
+        self._ensure_auth()
+        if not week_start:
+            today = date.today()
+            week_start = (today - timedelta(days=today.weekday())).isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/trainingLoad/daily/{week_start}",
+            params={"displayName": self._display_name},
+        )
+
+        metrics = data.get("metricsMap", {}) if data else {}
+        load_entries = metrics.get("TRAINING_LOAD_7_DAYS", [{}])
+        total = load_entries[0].get("value") if load_entries else None
+
+        return TrainingLoad(
+            week_start=week_start,
+            total_load=total,
+            aerobic_low=data.get("aerobicLowLoad") if data else None,
+            aerobic_high=data.get("aerobicHighLoad") if data else None,
+            anaerobic=data.get("anaerobicLoad") if data else None,
+        )
+
+    @with_retry
+    async def get_race_predictions(self) -> RacePredictions:
+        """Fetch race time predictions from Garmin."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/racePredictions/{self._display_name}",
+        )
+
+        predictions = {p["distance"]: p["time"] for p in (data.get("racePredictions") or [])}
+
+        return RacePredictions(
+            race_5k_seconds=predictions.get(5000),
+            race_10k_seconds=predictions.get(10000),
+            half_marathon_seconds=predictions.get(21097),
+            marathon_seconds=predictions.get(42195),
+        )
