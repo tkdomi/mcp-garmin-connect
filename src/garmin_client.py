@@ -420,7 +420,7 @@ class GarminClient:
         readiness = dto.get("trainingReadinessDTO", {}) or {}
         acute = dto.get("acuteLoad")
         chronic = dto.get("chronicLoad")
-        ratio = round(acute / chronic, 2) if acute and chronic and chronic > 0 else None
+        ratio = round(acute / chronic, 2) if acute is not None and chronic and chronic > 0 else None
 
         return TrainingStatus(
             date=target_date,

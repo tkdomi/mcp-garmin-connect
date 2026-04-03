@@ -64,6 +64,7 @@ async def test_get_training_status_parses_correctly():
     assert result.training_readiness_score == 72
     assert result.acute_load == 420.0
     assert result.chronic_load == 385.0
+    assert result.load_ratio == pytest.approx(1.09, rel=0.01)
 
 
 @pytest.mark.asyncio
