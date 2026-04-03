@@ -159,7 +159,7 @@ async def _get_health_summary(days: int = 7):
         avg_hrv=avg([r.get("hrv_last_night") for r in sleep_records]),
         avg_steps=avg([r.get("total_steps") for r in stats_records]),
         avg_stress=avg([r.get("avg_stress_level") for r in stats_records]),
-        avg_resting_hr=avg([r.get("resting_heart_rate") for r in sleep_records]),
+        avg_resting_hr=avg([r.get("resting_heart_rate") for r in stats_records]),
         total_activities=total_activities,
     )
     return summary.model_dump()
