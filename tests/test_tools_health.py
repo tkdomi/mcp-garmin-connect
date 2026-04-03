@@ -84,7 +84,9 @@ async def test_get_spo2_respiration_parses_correctly():
     def side_effect(endpoint, **kwargs):
         if "spo2" in endpoint:
             return MOCK_SPO2
-        return MOCK_RESPIRATION
+        elif "respiration" in endpoint:
+            return MOCK_RESPIRATION
+        return {}
 
     with patch("src.garmin_client.asyncio.to_thread", side_effect=mock_to_thread):
         with patch("src.garmin_client.garth.connectapi", side_effect=side_effect):

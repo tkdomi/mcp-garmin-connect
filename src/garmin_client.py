@@ -264,7 +264,7 @@ class GarminClient:
 
         intake = data.get("valueInML")
         goal = data.get("goalInML")
-        pct = round(intake / goal * 100, 1) if intake and goal and goal > 0 else None
+        pct = round(intake / goal * 100, 1) if intake is not None and goal and goal > 0 else None
 
         return HydrationData(
             date=target_date,
