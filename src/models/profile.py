@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
@@ -20,7 +20,7 @@ class PersonalRecord(BaseModel):
 
 
 class PersonalRecords(BaseModel):
-    records: List[PersonalRecord] = []
+    records: List[PersonalRecord] = Field(default_factory=list)
     stale: bool = False
 
 
@@ -32,7 +32,7 @@ class WeightEntry(BaseModel):
 
 
 class WeightHistory(BaseModel):
-    entries: List[WeightEntry] = []
+    entries: List[WeightEntry] = Field(default_factory=list)
     avg_weight_kg: Optional[float] = None
     min_weight_kg: Optional[float] = None
     max_weight_kg: Optional[float] = None
