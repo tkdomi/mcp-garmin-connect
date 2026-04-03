@@ -8,9 +8,13 @@ import garth
 from garth.exc import GarthHTTPError
 
 from src.config import settings
-from src.models import SleepData, BodyBatteryData, DailyStats, ActivityData, BodyBatteryEntry
+from src.models import SleepData, BodyBatteryData, DailyStats, ActivityData, BodyBatteryEntry, HRZone, LapData, ActivitySummary, ActivityList
 
 logger = logging.getLogger(__name__)
+
+ACTIVITY_TYPE_MAP: dict[str, str] = {
+    "swimming": "lap_swimming",
+}
 
 MAX_RETRIES = 3
 RETRY_BACKOFF = 2  # seconds
@@ -35,6 +39,19 @@ def with_retry(func):
 class GarminClient:
     def __init__(self):
         self._authenticated = False
+        self._display_name: Optional[str] = None
+
+    def _fetch_display_name(self):
+        try:
+            profile = garth.connectapi("/userprofile-service/userprofile/personal-information")
+            self._display_name = profile.get("displayName") or profile.get("userName")
+            if not self._display_name:
+                logger.warning("Display name not found in profile, falling back to email.")
+                self._display_name = settings.garmin_email
+            logger.info(f"Garmin display name: {self._display_name}")
+        except Exception as e:
+            logger.warning(f"Could not fetch display name, falling back to email: {e}")
+            self._display_name = settings.garmin_email
 
     def authenticate(self):
         """Login to Garmin Connect and persist session via garth."""
@@ -56,6 +73,8 @@ class GarminClient:
             except Exception:
                 logger.info("No cached session found, authenticating...")
                 self.authenticate()
+        if self._display_name is None:
+            self._fetch_display_name()
 
     @with_retry
     async def get_sleep_data(self, target_date: Optional[str] = None) -> SleepData:
@@ -125,7 +144,7 @@ class GarminClient:
 
         data = await asyncio.to_thread(
             garth.connectapi,
-            f"/usersummary-service/usersummary/daily/{settings.garmin_email}",
+            f"/usersummary-service/usersummary/daily/{self._display_name}",
             params={"calendarDate": target_date}
         )
 
@@ -148,22 +167,71 @@ class GarminClient:
         )
 
     @with_retry
-    async def get_last_activity(self) -> ActivityData:
-        """Fetch the most recent physical activity."""
+    async def get_activities_list(
+        self,
+        activity_type: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 10,
+    ) -> ActivityList:
+        """Fetch a list of activities with optional type and date filters."""
         self._ensure_auth()
+        params: dict = {"limit": limit, "start": 0}
+        if activity_type:
+            params["activityType"] = ACTIVITY_TYPE_MAP.get(activity_type, activity_type)
+        if start_date:
+            params["startDate"] = start_date
+        if end_date:
+            params["endDate"] = end_date
 
         data = await asyncio.to_thread(
             garth.connectapi,
             "/activitylist-service/activities/search/activities",
-            params={"limit": 1, "start": 0}
+            params=params,
         )
+        activities = [
+            ActivitySummary(
+                activity_id=a.get("activityId"),
+                activity_name=a.get("activityName"),
+                activity_type=a.get("activityType", {}).get("typeKey"),
+                start_time=a.get("startTimeLocal"),
+                duration_seconds=a.get("duration"),
+                distance_meters=a.get("distance"),
+                avg_heart_rate=a.get("averageHR"),
+                max_heart_rate=a.get("maxHR"),
+                calories=a.get("calories"),
+                avg_speed=a.get("averageSpeed"),
+                elevation_gain=a.get("elevationGain"),
+            )
+            for a in (data or [])
+        ]
+        return ActivityList(activities=activities, count=len(activities))
 
-        if not data:
-            return ActivityData()
+    @with_retry
+    async def get_activity(self, activity_id: Optional[int] = None) -> ActivityData:
+        """Fetch full details of a single activity. Defaults to most recent if no ID given."""
+        self._ensure_auth()
 
-        a = data[0]
-        return ActivityData(
-            activity_id=a.get("activityId"),
+        if activity_id is None:
+            data = await asyncio.to_thread(
+                garth.connectapi,
+                "/activitylist-service/activities/search/activities",
+                params={"limit": 1, "start": 0},
+            )
+            if not data:
+                return ActivityData()
+            a = data[0]
+            activity_id = a.get("activityId")
+        else:
+            data = await asyncio.to_thread(
+                garth.connectapi,
+                "/activitylist-service/activities/search/activities",
+                params={"activityId": activity_id, "limit": 1, "start": 0},
+            )
+            a = data[0] if data else {}
+
+        base = ActivityData(
+            activity_id=activity_id,
             activity_name=a.get("activityName"),
             activity_type=a.get("activityType", {}).get("typeKey"),
             start_time=a.get("startTimeLocal"),
@@ -175,3 +243,52 @@ class GarminClient:
             avg_speed=a.get("averageSpeed"),
             elevation_gain=a.get("elevationGain"),
         )
+
+        if not activity_id:
+            return base
+
+        try:
+            detail = await asyncio.to_thread(
+                garth.connectapi,
+                f"/activity-service/activity/{activity_id}",
+            )
+            summary = detail.get("summaryDTO", {})
+            base.avg_cadence = summary.get("averageRunCadence")
+            base.max_cadence = summary.get("maxRunCadence")
+            base.avg_power = summary.get("averagePower")
+            base.normalized_power = summary.get("normalizedPower")
+            base.training_effect = summary.get("trainingEffect")
+            base.anaerobic_training_effect = summary.get("anaerobicTrainingEffect")
+            base.stride_length_cm = summary.get("strideLength")
+            base.vertical_oscillation_cm = summary.get("verticalOscillation")
+            base.ground_contact_time_ms = summary.get("groundContactTime")
+            base.steps = summary.get("steps")
+            base.hr_zones = [
+                HRZone(zone_number=z["zoneNumber"], time_in_zone_seconds=z.get("secsInZone"))
+                for z in (detail.get("heartRateZones") or [])
+            ]
+        except Exception as e:
+            logger.warning(f"Could not fetch activity detail for {activity_id}: {e}")
+
+        try:
+            laps_data = await asyncio.to_thread(
+                garth.connectapi,
+                f"/activity-service/activity/{activity_id}/laps",
+            )
+            lap_dtos = laps_data.get("lapDTOs", []) if isinstance(laps_data, dict) else []
+            base.laps = []
+            for lap in lap_dtos:
+                dist, dur = lap.get("distance"), lap.get("duration")
+                pace = round(dur / dist * 1000) if dist and dur and dist > 0 else None
+                base.laps.append(LapData(
+                    lap_index=lap.get("lapIndex", 0),
+                    distance_meters=dist,
+                    duration_seconds=dur,
+                    avg_pace_per_km_seconds=pace,
+                    avg_heart_rate=lap.get("averageHR"),
+                    avg_cadence=lap.get("averageRunCadence"),
+                ))
+        except Exception as e:
+            logger.warning(f"Could not fetch laps for {activity_id}: {e}")
+
+        return base

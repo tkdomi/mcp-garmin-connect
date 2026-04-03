@@ -7,13 +7,13 @@ class Settings(BaseSettings):
     garmin_email: str
     garmin_password: str
 
-    # Supabase
-    supabase_url: str
-    supabase_key: str
+    # Supabase (optional — disables caching if not set)
+    supabase_url: Optional[str] = None
+    supabase_key: Optional[str] = None
 
-    # n8n
-    n8n_webhook_url: str
-    n8n_bearer_token: str
+    # n8n (optional — disables webhook alerts if not set)
+    n8n_webhook_url: Optional[str] = None
+    n8n_bearer_token: Optional[str] = None
 
     # MCP Server
     mcp_port: int = 8080
