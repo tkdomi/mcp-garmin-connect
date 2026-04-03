@@ -22,6 +22,10 @@ DATA_TYPES = {
     "vo2max_cycling": settings.cache_ttl_daily,
     "training_load": settings.cache_ttl_daily,
     "race_predictions": settings.cache_ttl_daily,
+    "user_profile": settings.cache_ttl_historical,
+    "personal_records": settings.cache_ttl_historical,
+    "fitness_age": settings.cache_ttl_daily,
+    "weight_history_30d": settings.cache_ttl_historical,
 }
 
 

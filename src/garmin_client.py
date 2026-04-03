@@ -16,6 +16,7 @@ from src.models.training import (
     ActivityData, HRZone, LapData, ActivitySummary, ActivityList,
     TrainingStatus, VO2MaxData, VO2MaxHistory, TrainingLoad, RacePredictions,
 )
+from src.models.profile import UserProfile, PersonalRecord, PersonalRecords, WeightEntry, WeightHistory, FitnessAge
 
 logger = logging.getLogger(__name__)
 
@@ -494,4 +495,93 @@ class GarminClient:
             race_10k_seconds=predictions.get(10000),
             half_marathon_seconds=predictions.get(21097),
             marathon_seconds=predictions.get(42195),
+        )
+
+    @with_retry
+    async def get_user_profile(self) -> UserProfile:
+        """Fetch user profile information."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            "/userprofile-service/userprofile/personal-information",
+        )
+
+        weight_g = data.get("weight")
+        return UserProfile(
+            display_name=data.get("displayName"),
+            full_name=data.get("fullName"),
+            birth_date=data.get("birthDate"),
+            gender=data.get("genderType"),
+            weight_kg=round(weight_g / 1000, 1) if weight_g is not None else None,
+            height_cm=data.get("height"),
+        )
+
+    @with_retry
+    async def get_personal_records(self) -> PersonalRecords:
+        """Fetch personal records across all sports."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/activitylist-service/records/list/{self._display_name}",
+        )
+
+        records = [
+            PersonalRecord(
+                activity_type=r.get("activityType"),
+                type_key=r.get("typeKey"),
+                value=r.get("value"),
+                pr_date=(r.get("activityStartDateTimeLocal") or "")[:10] or None,
+            )
+            for r in (data or [])
+        ]
+        return PersonalRecords(records=records)
+
+    @with_retry
+    async def get_fitness_age(self) -> FitnessAge:
+        """Fetch Garmin fitness age."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/fitnessAge/{self._display_name}",
+        )
+
+        return FitnessAge(
+            current_age=data.get("chronologicalAge") if data else None,
+            fitness_age=data.get("fitnessAge") if data else None,
+            potential_fitness_age=data.get("potentialFitnessAge") if data else None,
+        )
+
+    @with_retry
+    async def get_weight_history(self, days: int = 30) -> WeightHistory:
+        """Fetch weight history for the past N days."""
+        self._ensure_auth()
+        end_date = date.today().isoformat()
+        start_date = (date.today() - timedelta(days=days)).isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            "/weight-service/weight/dateRange",
+            params={"startDate": start_date, "endDate": end_date},
+        )
+
+        summaries = data.get("dailyWeightSummaries", []) if data else []
+        entries = []
+        for s in summaries:
+            weight_g = s.get("weight")
+            entries.append(WeightEntry(
+                date=(s.get("date") or "")[:10],
+                weight_kg=round(weight_g / 1000, 1) if weight_g is not None else None,
+                bmi=s.get("bmi"),
+                body_fat_percent=s.get("bodyFat"),
+            ))
+
+        weights = [e.weight_kg for e in entries if e.weight_kg is not None]
+        return WeightHistory(
+            entries=entries,
+            avg_weight_kg=round(sum(weights) / len(weights), 1) if weights else None,
+            min_weight_kg=min(weights) if weights else None,
+            max_weight_kg=max(weights) if weights else None,
         )
