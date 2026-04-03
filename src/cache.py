@@ -25,7 +25,7 @@ DATA_TYPES = {
     "user_profile": settings.cache_ttl_historical,
     "personal_records": settings.cache_ttl_historical,
     "fitness_age": settings.cache_ttl_daily,
-    "weight_history_30d": settings.cache_ttl_historical,
+    "weight_history": settings.cache_ttl_historical,
 }
 
 

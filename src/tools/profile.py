@@ -120,17 +120,16 @@ async def _get_fitness_age():
 
 async def _get_weight_history(days: int = 30):
     today = date.today().isoformat()
-    cache_key = f"weight_history_{days}d"
-    cached = cache.get(cache_key, today)
+    cached = cache.get("weight_history", today)
     if cached:
         return cached
     try:
         data = await garmin.get_weight_history(days)
-        cache.set(cache_key, today, data.model_dump())
+        cache.set("weight_history", today, data.model_dump())
         return data.model_dump()
     except Exception as e:
         logger.warning(f"Garmin API failed for weight history, trying stale cache: {e}")
-        stale = cache.get_stale(cache_key, today)
+        stale = cache.get_stale("weight_history", today)
         if stale:
             stale["stale"] = True
             return stale
