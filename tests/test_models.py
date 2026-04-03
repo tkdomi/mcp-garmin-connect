@@ -1,4 +1,7 @@
 from src.models import HRZone, LapData, ActivityData
+from src.models.health import StressData, HeartRateData, SpO2RespirationData, HydrationData
+from src.models.training import TrainingStatus, VO2MaxData, TrainingLoad, RacePredictions
+from src.models.profile import UserProfile, PersonalRecords, WeightHistory, FitnessAge
 
 
 def test_hr_zone_defaults():
@@ -42,3 +45,27 @@ def test_activity_data_with_laps_and_zones():
     assert len(a.hr_zones) == 1
     assert a.hr_zones[0].zone_number == 2
     assert a.training_effect == 4.2
+
+
+def test_stress_data_defaults():
+    s = StressData(date="2026-04-03")
+    assert s.avg_stress is None
+    assert s.stale == False
+
+
+def test_training_status_defaults():
+    t = TrainingStatus(date="2026-04-03")
+    assert t.training_status is None
+    assert t.training_readiness_score is None
+
+
+def test_weight_history_defaults():
+    w = WeightHistory()
+    assert w.entries == []
+    assert w.avg_weight_kg is None
+
+
+def test_fitness_age_defaults():
+    f = FitnessAge()
+    assert f.fitness_age is None
+    assert f.potential_fitness_age is None

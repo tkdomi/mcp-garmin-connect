@@ -8,7 +8,8 @@ import garth
 from garth.exc import GarthHTTPError
 
 from src.config import settings
-from src.models import SleepData, BodyBatteryData, DailyStats, ActivityData, BodyBatteryEntry, HRZone, LapData, ActivitySummary, ActivityList
+from src.models.health import SleepData, BodyBatteryData, BodyBatteryEntry, DailyStats
+from src.models.training import ActivityData, HRZone, LapData, ActivitySummary, ActivityList
 
 logger = logging.getLogger(__name__)
 

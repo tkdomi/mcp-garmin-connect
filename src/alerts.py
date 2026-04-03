@@ -2,7 +2,8 @@ import logging
 from typing import List
 
 from src.config import settings
-from src.models import WebhookPayload, SleepData, DailyStats, BodyBatteryData
+from src.models.alerts import WebhookPayload
+from src.models.health import SleepData, DailyStats, BodyBatteryData
 
 logger = logging.getLogger(__name__)
 
