@@ -23,7 +23,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "date": {
                     "type": "string",
-                    "description": "Date in YYYY-MM-DD format. Defaults to last night if not provided.",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today (Garmin uses wake-up date, so today returns last night's sleep).",
                 }
             },
         },
