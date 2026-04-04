@@ -13,6 +13,19 @@ DATA_TYPES = {
     "daily_stats": settings.cache_ttl_daily,
     "body_battery": settings.cache_ttl_daily,
     "activity": settings.cache_ttl_daily,
+    "stress": settings.cache_ttl_daily,
+    "heart_rate": settings.cache_ttl_daily,
+    "spo2_respiration": settings.cache_ttl_historical,
+    "hydration": settings.cache_ttl_daily,
+    "training_status": settings.cache_ttl_daily,
+    "vo2max_running": settings.cache_ttl_daily,
+    "vo2max_cycling": settings.cache_ttl_daily,
+    "training_load": settings.cache_ttl_daily,
+    "race_predictions": settings.cache_ttl_daily,
+    "user_profile": settings.cache_ttl_historical,
+    "personal_records": settings.cache_ttl_historical,
+    "fitness_age": settings.cache_ttl_daily,
+    "weight_history": settings.cache_ttl_historical,
 }
 
 

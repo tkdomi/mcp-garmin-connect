@@ -6,14 +6,10 @@ import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.config import settings
-from src.garmin_client import GarminClient
-from src.cache import CacheService
 from src.alerts import build_webhook_payload
+from src.services import garmin, cache
 
 logger = logging.getLogger(__name__)
-
-garmin = GarminClient()
-cache = CacheService()
 
 
 async def sync_health_data():
@@ -25,8 +21,8 @@ async def sync_health_data():
     sleep, stats, battery = None, None, None
 
     try:
-        sleep = await garmin.get_sleep_data(yesterday)
-        cache.set("sleep", yesterday, sleep.model_dump())
+        sleep = await garmin.get_sleep_data(today)
+        cache.set("sleep", today, sleep.model_dump())
         logger.info(f"Sleep synced: score={sleep.sleep_score}, HRV={sleep.hrv_last_night}")
     except Exception as e:
         logger.error(f"Sleep sync failed: {e}")

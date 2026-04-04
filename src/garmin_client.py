@@ -8,7 +8,15 @@ import garth
 from garth.exc import GarthHTTPError
 
 from src.config import settings
-from src.models import SleepData, BodyBatteryData, DailyStats, ActivityData, BodyBatteryEntry, HRZone, LapData, ActivitySummary, ActivityList
+from src.models.health import (
+    SleepData, BodyBatteryData, BodyBatteryEntry, DailyStats,
+    StressData, HeartRateData, SpO2RespirationData, HydrationData,
+)
+from src.models.training import (
+    ActivityData, HRZone, LapData, ActivitySummary, ActivityList,
+    TrainingStatus, VO2MaxData, VO2MaxHistory, TrainingLoad, RacePredictions,
+)
+from src.models.profile import UserProfile, PersonalRecord, PersonalRecords, WeightEntry, WeightHistory, FitnessAge
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +85,9 @@ class GarminClient:
             self._fetch_display_name()
 
     @with_retry
-    async def get_sleep_data(self, target_date: Optional[str] = None) -> SleepData:
-        """Fetch sleep data for a given date (YYYY-MM-DD). Defaults to last night."""
+    async def get_sleep_data(self, target_date: str) -> SleepData:
+        """Fetch sleep data for a given date (YYYY-MM-DD)."""
         self._ensure_auth()
-        if not target_date:
-            target_date = (date.today() - timedelta(days=1)).isoformat()
 
         data = await asyncio.to_thread(
             garth.connectapi,
@@ -164,6 +170,109 @@ class GarminClient:
             rest_stress_duration=data.get("restStressDuration"),
             resting_heart_rate=data.get("restingHeartRate"),
             max_heart_rate=data.get("maxHeartRate"),
+        )
+
+    @with_retry
+    async def get_stress_data(self, target_date: Optional[str] = None) -> StressData:
+        """Fetch hourly stress data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/wellness-service/wellness/dailyStress/{target_date}",
+        )
+
+        hourly = [
+            {"time": entry[0], "stress_level": entry[1]}
+            for entry in (data.get("stressValuesArray") or [])
+            if entry[1] is not None and entry[1] >= 0
+        ]
+
+        return StressData(
+            date=target_date,
+            avg_stress=data.get("overallStressLevel"),
+            max_stress=data.get("maxStressLevel"),
+            rest_stress=data.get("restStressDuration"),
+            activity_stress=data.get("activityStressDuration"),
+            hourly_values=hourly or None,
+        )
+
+    @with_retry
+    async def get_heart_rate_data(self, target_date: Optional[str] = None) -> HeartRateData:
+        """Fetch detailed heart rate data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/wellness-service/wellness/dailyHeartRate/{self._display_name}",
+            params={"date": target_date},
+        )
+
+        hourly = [
+            {"time": entry[0], "hr": entry[1]}
+            for entry in (data.get("heartRateValues") or [])
+            if entry[1] is not None
+        ]
+
+        return HeartRateData(
+            date=target_date,
+            resting_hr=data.get("restingHeartRate"),
+            max_hr=data.get("maxHeartRate"),
+            min_hr=data.get("minHeartRate"),
+            hourly_values=hourly or None,
+        )
+
+    @with_retry
+    async def get_spo2_respiration(self, target_date: Optional[str] = None) -> SpO2RespirationData:
+        """Fetch SpO2 and respiration data for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = (date.today() - timedelta(days=1)).isoformat()
+
+        spo2_data, resp_data = await asyncio.gather(
+            asyncio.to_thread(
+                garth.connectapi,
+                f"/wellness-service/wellness/daily/spo2/{target_date}",
+            ),
+            asyncio.to_thread(
+                garth.connectapi,
+                f"/wellness-service/wellness/daily/respiration/{target_date}",
+            ),
+        )
+
+        return SpO2RespirationData(
+            date=target_date,
+            avg_spo2=spo2_data.get("averageSpO2") if spo2_data else None,
+            min_spo2=spo2_data.get("lowestSpO2") if spo2_data else None,
+            avg_respiration=resp_data.get("avgWakingRespirationValue") if resp_data else None,
+            max_respiration=resp_data.get("highestRespirationValue") if resp_data else None,
+        )
+
+    @with_retry
+    async def get_hydration_data(self, target_date: Optional[str] = None) -> HydrationData:
+        """Fetch hydration goal and intake for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/usersummary-service/usersummary/hydration/allData/{target_date}",
+        )
+
+        intake = data.get("valueInML")
+        goal = data.get("goalInML")
+        pct = round(intake / goal * 100, 1) if intake is not None and goal and goal > 0 else None
+
+        return HydrationData(
+            date=target_date,
+            goal_ml=goal,
+            intake_ml=intake,
+            percent_complete=pct,
         )
 
     @with_retry
@@ -292,3 +401,185 @@ class GarminClient:
             logger.warning(f"Could not fetch laps for {activity_id}: {e}")
 
         return base
+
+    @with_retry
+    async def get_training_status(self, target_date: Optional[str] = None) -> TrainingStatus:
+        """Fetch training status and readiness for a given date."""
+        self._ensure_auth()
+        if not target_date:
+            target_date = date.today().isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/trainingStatus/daily/{target_date}",
+            params={"displayName": self._display_name},
+        )
+
+        dto = data.get("trainingStatusDTO", {}) if data else {}
+        readiness = dto.get("trainingReadinessDTO", {}) or {}
+        acute = dto.get("acuteLoad")
+        chronic = dto.get("chronicLoad")
+        ratio = round(acute / chronic, 2) if acute is not None and chronic and chronic > 0 else None
+
+        return TrainingStatus(
+            date=target_date,
+            training_status=dto.get("latestTrainingStatusPhrase"),
+            training_readiness_score=readiness.get("score"),
+            acute_load=acute,
+            chronic_load=chronic,
+            load_ratio=ratio,
+        )
+
+    @with_retry
+    async def get_vo2max(self, sport: str = "running") -> VO2MaxData:
+        """Fetch VO2 max value for a given sport."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/maxMet/latest/{self._display_name}",
+        )
+
+        generic = data.get("generic", {}) if data else {}
+        sport_data = data.get(sport, {}) if data else {}
+        value = (sport_data or {}).get("vo2MaxValue") or generic.get("vo2MaxValue")
+
+        return VO2MaxData(
+            sport=sport,
+            value=value,
+            fitness_age_equivalent=generic.get("fitnessAge"),
+        )
+
+    @with_retry
+    async def get_training_load(self, week_start: Optional[str] = None) -> TrainingLoad:
+        """Fetch weekly training load breakdown."""
+        self._ensure_auth()
+        if not week_start:
+            today = date.today()
+            week_start = (today - timedelta(days=today.weekday())).isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/trainingLoad/daily/{week_start}",
+            params={"displayName": self._display_name},
+        )
+
+        metrics = data.get("metricsMap", {}) if data else {}
+        load_entries = metrics.get("TRAINING_LOAD_7_DAYS", [{}])
+        total = load_entries[0].get("value") if load_entries else None
+
+        return TrainingLoad(
+            week_start=week_start,
+            total_load=total,
+            aerobic_low=data.get("aerobicLowLoad") if data else None,
+            aerobic_high=data.get("aerobicHighLoad") if data else None,
+            anaerobic=data.get("anaerobicLoad") if data else None,
+        )
+
+    @with_retry
+    async def get_race_predictions(self) -> RacePredictions:
+        """Fetch race time predictions from Garmin."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/racePredictions/{self._display_name}",
+        )
+
+        predictions = {p["distance"]: p["time"] for p in (data.get("racePredictions") or [])}
+
+        return RacePredictions(
+            race_5k_seconds=predictions.get(5000),
+            race_10k_seconds=predictions.get(10000),
+            half_marathon_seconds=predictions.get(21097),
+            marathon_seconds=predictions.get(42195),
+        )
+
+    @with_retry
+    async def get_user_profile(self) -> UserProfile:
+        """Fetch user profile information."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            "/userprofile-service/userprofile/personal-information",
+        )
+
+        weight_g = data.get("weight")
+        return UserProfile(
+            display_name=data.get("displayName"),
+            full_name=data.get("fullName"),
+            birth_date=data.get("birthDate"),
+            gender=data.get("genderType"),
+            weight_kg=round(weight_g / 1000, 1) if weight_g is not None else None,
+            height_cm=data.get("height"),
+        )
+
+    @with_retry
+    async def get_personal_records(self) -> PersonalRecords:
+        """Fetch personal records across all sports."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/activitylist-service/records/list/{self._display_name}",
+        )
+
+        records = [
+            PersonalRecord(
+                activity_type=r.get("activityType"),
+                type_key=r.get("typeKey"),
+                value=r.get("value"),
+                pr_date=(r.get("activityStartDateTimeLocal") or "")[:10] or None,
+            )
+            for r in (data or [])
+        ]
+        return PersonalRecords(records=records)
+
+    @with_retry
+    async def get_fitness_age(self) -> FitnessAge:
+        """Fetch Garmin fitness age."""
+        self._ensure_auth()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            f"/metrics-service/metrics/fitnessAge/{self._display_name}",
+        )
+
+        return FitnessAge(
+            current_age=data.get("chronologicalAge") if data else None,
+            fitness_age=data.get("fitnessAge") if data else None,
+            potential_fitness_age=data.get("potentialFitnessAge") if data else None,
+        )
+
+    @with_retry
+    async def get_weight_history(self, days: int = 30) -> WeightHistory:
+        """Fetch weight history for the past N days."""
+        self._ensure_auth()
+        end_date = date.today().isoformat()
+        start_date = (date.today() - timedelta(days=days)).isoformat()
+
+        data = await asyncio.to_thread(
+            garth.connectapi,
+            "/weight-service/weight/dateRange",
+            params={"startDate": start_date, "endDate": end_date},
+        )
+
+        summaries = data.get("dailyWeightSummaries", []) if data else []
+        entries = []
+        for s in summaries:
+            weight_g = s.get("weight")
+            entries.append(WeightEntry(
+                date=(s.get("date") or "")[:10],
+                weight_kg=round(weight_g / 1000, 1) if weight_g is not None else None,
+                bmi=s.get("bmi"),
+                body_fat_percent=s.get("bodyFat"),
+            ))
+
+        weights = [e.weight_kg for e in entries if e.weight_kg is not None]
+        return WeightHistory(
+            entries=entries,
+            avg_weight_kg=round(sum(weights) / len(weights), 1) if weights else None,
+            min_weight_kg=min(weights) if weights else None,
+            max_weight_kg=max(weights) if weights else None,
+        )
