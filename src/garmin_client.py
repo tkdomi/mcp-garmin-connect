@@ -85,11 +85,9 @@ class GarminClient:
             self._fetch_display_name()
 
     @with_retry
-    async def get_sleep_data(self, target_date: Optional[str] = None) -> SleepData:
-        """Fetch sleep data for a given date (YYYY-MM-DD). Defaults to last night."""
+    async def get_sleep_data(self, target_date: str) -> SleepData:
+        """Fetch sleep data for a given date (YYYY-MM-DD)."""
         self._ensure_auth()
-        if not target_date:
-            target_date = (date.today() - timedelta(days=1)).isoformat()
 
         data = await asyncio.to_thread(
             garth.connectapi,

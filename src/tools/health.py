@@ -157,7 +157,7 @@ async def handle(name: str, arguments: dict) -> Optional[dict]:
 
 async def _get_sleep_data(target_date: Optional[str] = None):
     if not target_date:
-        target_date = (date.today() - timedelta(days=1)).isoformat()
+        target_date = date.today().isoformat()
     cached = cache.get("sleep", target_date)
     if cached:
         return cached
