@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
@@ -78,4 +79,5 @@ app = Starlette(
 )
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.mcp_port, log_level="info")
+    port = int(os.environ.get("PORT", settings.mcp_port))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
